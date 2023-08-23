@@ -10,3 +10,5 @@ RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/
 RUN conda install python=3.9 ipykernel ipywidgets
 RUN conda install pandas seaborn scipy scikit-learn tqdm 
 RUN pip install pyyaml fplanck
+RUN conda install -c conda-forge py-pde
+RUN pip install --upgrade jax[cpu]
