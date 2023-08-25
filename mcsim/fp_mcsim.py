@@ -33,9 +33,9 @@ s2o = 1;							# initial variance
 #NR = 1;                             # no. of repetitions of the simulation
 #sw = [1 1];                        # algorithms to run: sw(1) is BF, sw(2) is CKF
 npts = 40;                          # no. of points in each dimension in grid
-NP = 1000;                          # no. of particles, needs to be increased to 10^6 
+NP = 100000;                          # no. of particles, needs to be increased to 10^6 
 
-batchsize = 1000
+batchsize = 10000
 d = 3;                              # dimension of state vector 
 p = 2;                              # dimension of observation vector 
 comppost = 1;                       #= 1 means to compute posterior, = 0 means only compute fokker planck
@@ -179,7 +179,8 @@ XP2 = random.multivariate_normal(mean=XR02.flatten(),
 XP = jnp.concatenate([XP1, XP2], axis=1)
 
 for i in range(0, NP, batchsize):
-    XP_batch = XP
+    
+    XP_batch = XP[:, i: i+batchsize]
 
     if i == 0:
         priorpdf0 = jnp.apply_along_axis(computepdf, 
@@ -205,9 +206,8 @@ for i in range(0, NP, batchsize):
         carry_out, out = jax.lax.scan(fokker_planck, carry_in, idx)
         priorpdfn = priorpdfn + out
 
-quit()
-
 message("Done!")
+quit()
 
 # Xtrue = XR[:, idy]
 
