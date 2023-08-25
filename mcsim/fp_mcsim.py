@@ -3,6 +3,8 @@ import jax
 import numpy as np
 import jax.numpy as jnp
 
+from datetime import datetime as dt
+
 from jax import random
 from tqdm import tqdm
 
@@ -31,7 +33,9 @@ s2o = 1;							# initial variance
 #NR = 1;                             # no. of repetitions of the simulation
 #sw = [1 1];                        # algorithms to run: sw(1) is BF, sw(2) is CKF
 npts = 40;                          # no. of points in each dimension in grid
-NP = 100000;                          # no. of particles, needs to be increased to 10^6 
+NP = 1000;                          # no. of particles, needs to be increased to 10^6 
+
+batchsize = 1000
 d = 3;                              # dimension of state vector 
 p = 2;                              # dimension of observation vector 
 comppost = 1;                       #= 1 means to compute posterior, = 0 means only compute fokker planck
@@ -52,6 +56,10 @@ extents = jnp.array([[-20, 20],
 
 # %%
 idy = jnp.arange(0, NT, M)
+
+
+def message(msg):
+    print(f"{dt.now()}: {msg}")
 
 # %% [markdown]
 # $$
@@ -105,7 +113,7 @@ def time_update(carry, t):
 
 # %%
 # Define timesteps and carry vectors
-print("Reference solution..")
+message("Reference solution..")
 
 t = jnp.arange(NT)
 carry = {
@@ -120,7 +128,7 @@ carry_out, out = jax.lax.scan(time_update, carry, t)
 XR = out['XT'].T.reshape((d, -1))
 ZR = out['ZT'].T.reshape((p, -1))
 
-print("Done!")
+message("Done!")
 
 
 # %%
@@ -130,13 +138,13 @@ mesh = jnp.stack(jnp.meshgrid(*points), axis=-1)
 
 # %%
 
-print("Generate prior pdf ..")
+message("Generate prior pdf ..")
 
 @jax.jit
-def evolve_particles(carry, ts):
-    XT = carry['XT']
-    carry['XT'] = XT + h*nu(XT) + sx*np.sqrt(h)*random.normal(key=key, shape=(d, NP))
-    return carry, XT
+def evolve_particles(i, X):
+    NP_batch = X.shape[-1]
+    X = X + h*nu(X) + sx*np.sqrt(h)*random.normal(key=key, shape=(d, NP_batch))
+    return X
 
 @jax.jit
 def computepdf(X):
@@ -147,12 +155,13 @@ def computepdf(X):
 
 @jax.jit
 def fokker_planck(carry, idx):
-    ts = jnp.arange(M)
-    carry, _ = jax.lax.scan(evolve_particles, carry, ts)
-    carry['priorpdf'] = jnp.apply_along_axis(computepdf, 
-                                             axis=0, 
-                                             arr=carry['XT']).sum(axis=-1)
-    return carry, carry['priorpdf']
+    carry['XT'] = jax.lax.fori_loop(0, M, evolve_particles, carry['XT'])
+    message("Particles evolved")
+    priorpdfi = jnp.apply_along_axis(computepdf, 
+                                     axis=0, 
+                                     arr=carry['XT']).sum(axis=-1)
+    message("PDF computed")
+    return carry, priorpdfi
 
 
 # %%
@@ -168,18 +177,37 @@ XP2 = random.multivariate_normal(mean=XR02.flatten(),
                            key=key).T
 
 XP = jnp.concatenate([XP1, XP2], axis=1)
-priorpdf = jnp.apply_along_axis(computepdf, axis=0, arr=XP).sum(axis=-1)
 
-# Define timesteps and carry vectors
-idx = jnp.arange(len(idy)-1)
-carry = {
-    'XT': XP,
-    'priorpdf': priorpdf
-}
+for i in range(0, NP, batchsize):
+    XP_batch = XP
 
-carry_out, priorpdfout = jax.lax.scan(fokker_planck, carry, idx)
+    if i == 0:
+        priorpdf0 = jnp.apply_along_axis(computepdf, 
+                                        axis=0, arr=
+                                        XP_batch).sum(axis=-1)
+    else:
+        priorpdf0 = priorpdf0 + jnp.apply_along_axis(computepdf, 
+                                                    axis=0, 
+                                                    arr=XP_batch).sum(axis=-1)
+        
 
-print("Done!")
+    message(f"{i+1} step: pdf computed")
+
+
+    # Define timesteps and carry vectors
+    idx = jnp.arange(len(idy)-1)
+    carry_in = {
+        'XT': XP_batch
+    }
+    if i== 0:
+        carry_out, priorpdfn = jax.lax.scan(fokker_planck, carry_in, idx)
+    else:
+        carry_out, out = jax.lax.scan(fokker_planck, carry_in, idx)
+        priorpdfn = priorpdfn + out
+
+quit()
+
+message("Done!")
 
 # Xtrue = XR[:, idy]
 
@@ -188,7 +216,7 @@ print("Done!")
 
 # %%
 # %step 3. multiply by likelihood to get posterior: 
-print("Generate posterior...")
+message("Generate posterior...")
 ZL = ZR[:, idy]
 dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
 
@@ -199,7 +227,7 @@ correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) -
 correc = correc.reshape((-1, npts, npts, npts))
 proppdf = priorpdfout * correc
 
-print("Done!")
+message("Done!")
 
 # %%
 xmesh = mesh[:, :, :, 0]
