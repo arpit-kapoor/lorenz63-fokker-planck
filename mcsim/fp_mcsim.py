@@ -30,8 +30,8 @@ sy = 1;                             # std of observation noise
 s2o = 1;							# initial variance
 #NR = 1;                             # no. of repetitions of the simulation
 #sw = [1 1];                        # algorithms to run: sw(1) is BF, sw(2) is CKF
-npts = 20;                          # no. of points in each dimension in grid
-NP = 1000;                          # no. of particles, needs to be increased to 10^6 
+npts = 40;                          # no. of points in each dimension in grid
+NP = 100000;                          # no. of particles, needs to be increased to 10^6 
 d = 3;                              # dimension of state vector 
 p = 2;                              # dimension of observation vector 
 comppost = 1;                       #= 1 means to compute posterior, = 0 means only compute fokker planck
@@ -40,6 +40,9 @@ XR0 = jnp.array([[-5.91652], [-5.52332], [24.5723]])               # reference i
 XR02 = jnp.array([[5.91652], [5.52332], [24.5723]])               # other mode of initial distribution 
 
 ZR0 = jnp.zeros((p, 1))
+
+prior_file = '/home/z5370003/projects/lorenz63-fokker-planck/mcsim/runs/prior.gif'
+post_file = '/home/z5370003/projects/lorenz63-fokker-planck/mcsim/runs/post.gif'
 
 
 # Grid extents
@@ -102,6 +105,8 @@ def time_update(carry, t):
 
 # %%
 # Define timesteps and carry vectors
+print("Reference solution..")
+
 t = jnp.arange(NT)
 carry = {
     'XT': XR0,
@@ -115,22 +120,7 @@ carry_out, out = jax.lax.scan(time_update, carry, t)
 XR = out['XT'].T.reshape((d, -1))
 ZR = out['ZT'].T.reshape((p, -1))
 
-# %%
-
-
-# %%
-
-
-# %%
-
-
-# %%
-
-
-# %%
-
-
-# %%
+print("Done!")
 
 
 # %%
@@ -139,6 +129,9 @@ points = [jnp.linspace(*extents[i], npts) for i in range(d)]
 mesh = jnp.stack(jnp.meshgrid(*points), axis=-1)
 
 # %%
+
+print("Generate prior pdf ..")
+
 @jax.jit
 def evolve_particles(carry, ts):
     XT = carry['XT']
@@ -186,6 +179,7 @@ carry = {
 
 carry_out, priorpdfout = jax.lax.scan(fokker_planck, carry, idx)
 
+print("Done!")
 
 # Xtrue = XR[:, idy]
 
@@ -194,6 +188,7 @@ carry_out, priorpdfout = jax.lax.scan(fokker_planck, carry, idx)
 
 # %%
 # %step 3. multiply by likelihood to get posterior: 
+print("Generate posterior...")
 ZL = ZR[:, idy]
 dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
 
@@ -204,6 +199,7 @@ correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) -
 correc = correc.reshape((-1, npts, npts, npts))
 proppdf = priorpdfout * correc
 
+print("Done!")
 
 # %%
 xmesh = mesh[:, :, :, 0]
@@ -252,10 +248,10 @@ def plot_pdf(xs, ys, zs, p0, pn, name='plot.gif'):
 
 # %%
 p0 = priorpdf.ravel()
-plot_pdf(x, y, z, p0, priorpdfout, '/project/mcsim/prior.gif')
+plot_pdf(x, y, z, p0, priorpdfout, prior_file)
 
 # %%
-plot_pdf(x, y, z, p0, proppdf, '/project/mcsim/post.gif')
+plot_pdf(x, y, z, p0, proppdf, post_file)
 
 # %%
 
