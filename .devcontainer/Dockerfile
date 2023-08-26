@@ -7,8 +7,8 @@ ARG NODE_VERSION="none"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
 
 # Configure conda environment
-RUN conda install python=3.9 ipykernel ipywidgets
-RUN conda install pandas seaborn scipy scikit-learn tqdm 
+RUN pip install ipykernel ipywidgets
+RUN pip install pandas seaborn scipy scikit-learn tqdm 
 RUN pip install pyyaml fplanck
-RUN conda install -c conda-forge py-pde
+RUN pip install py-pde
 RUN pip install --upgrade jax[cpu]

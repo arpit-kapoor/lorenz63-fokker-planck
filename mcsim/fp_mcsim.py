@@ -206,28 +206,23 @@ for i in range(0, NP, batchsize):
         carry_out, out = jax.lax.scan(fokker_planck, carry_in, idx)
         priorpdfn = priorpdfn + out
 
-message("Done!")
-quit()
-
 # Xtrue = XR[:, idy]
-
-
 # XT = carry_out['XT']
 
 # %%
 # %step 3. multiply by likelihood to get posterior: 
-message("Generate posterior...")
-ZL = ZR[:, idy]
-dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
+# message("Generate posterior...")
+# ZL = ZR[:, idy]
+# dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
 
-hdpts = hobs_l63(dpoints, c)  #convert to observation space 
-y = jnp.expand_dims(jnp.diff(ZL, axis=1).T/(M*h), axis=-1)
+# hdpts = hobs_l63(dpoints, c)  #convert to observation space 
+# y = jnp.expand_dims(jnp.diff(ZL, axis=1).T/(M*h), axis=-1)
 
-correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
-correc = correc.reshape((-1, npts, npts, npts))
-proppdf = priorpdfout * correc
+# correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
+# correc = correc.reshape((-1, npts, npts, npts))
+# proppdf = priorpdfout * correc
 
-message("Done!")
+# message("Done!")
 
 # %%
 xmesh = mesh[:, :, :, 0]
@@ -275,11 +270,11 @@ def plot_pdf(xs, ys, zs, p0, pn, name='plot.gif'):
     plt.close()
 
 # %%
-p0 = priorpdf.ravel()
-plot_pdf(x, y, z, p0, priorpdfout, prior_file)
+p0 = priorpdf0.ravel()
+plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
 # %%
-plot_pdf(x, y, z, p0, proppdf, post_file)
+# plot_pdf(x, y, z, p0, proppdf, post_file)
 
 # %%
 
