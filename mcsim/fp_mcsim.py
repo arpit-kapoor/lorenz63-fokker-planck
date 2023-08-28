@@ -58,7 +58,7 @@ extents = jnp.array([[-20, 20],
 idy = jnp.arange(0, NT, M)
 
 
-def message(msg):
+def log_message(msg):
     print(f"{dt.now()}: {msg}")
 
 # %% [markdown]
@@ -113,7 +113,7 @@ def time_update(carry, t):
 
 # %%
 # Define timesteps and carry vectors
-message("Reference solution..")
+log_message("Reference solution..")
 
 t = jnp.arange(NT)
 carry = {
@@ -128,7 +128,7 @@ carry_out, out = jax.lax.scan(time_update, carry, t)
 XR = out['XT'].T.reshape((d, -1))
 ZR = out['ZT'].T.reshape((p, -1))
 
-message("Done!")
+log_message("Done!")
 
 
 # %%
@@ -138,7 +138,7 @@ mesh = jnp.stack(jnp.meshgrid(*points), axis=-1)
 
 # %%
 
-message("Generate prior pdf ..")
+log_message("Generate prior pdf ..")
 
 @jax.jit
 def evolve_particles(i, X):
@@ -156,11 +156,11 @@ def computepdf(X):
 @jax.jit
 def fokker_planck(carry, idx):
     carry['XT'] = jax.lax.fori_loop(0, M, evolve_particles, carry['XT'])
-    message("Particles evolved")
+    log_message("Particles evolved")
     priorpdfi = jnp.apply_along_axis(computepdf, 
                                      axis=0, 
                                      arr=carry['XT']).sum(axis=-1)
-    message("PDF computed")
+    log_message("PDF computed")
     return carry, priorpdfi
 
 
@@ -192,7 +192,7 @@ for i in range(0, NP, batchsize):
                                                     arr=XP_batch).sum(axis=-1)
         
 
-    message(f"{i+1} step: pdf computed")
+    log_message(f"{i+1} step: pdf computed")
 
 
     # Define timesteps and carry vectors
@@ -211,18 +211,18 @@ for i in range(0, NP, batchsize):
 
 # %%
 # %step 3. multiply by likelihood to get posterior: 
-# message("Generate posterior...")
-# ZL = ZR[:, idy]
-# dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
+log_message("Generate posterior...")
+ZL = ZR[:, idy]
+dpoints = mesh.transpose((3, 0, 1, 2)).reshape((d, -1))
 
-# hdpts = hobs_l63(dpoints, c)  #convert to observation space 
-# y = jnp.expand_dims(jnp.diff(ZL, axis=1).T/(M*h), axis=-1)
+hdpts = hobs_l63(dpoints, c)  #convert to observation space 
+y = jnp.expand_dims(jnp.diff(ZL, axis=1).T/(M*h), axis=-1)
 
-# correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
-# correc = correc.reshape((-1, npts, npts, npts))
-# proppdf = priorpdfout * correc
+correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
+correc = correc.reshape((-1, npts, npts, npts))
+proppdf = priorpdfn * correc
 
-# message("Done!")
+log_message("Done!")
 
 # %%
 xmesh = mesh[:, :, :, 0]
@@ -274,9 +274,5 @@ p0 = priorpdf0.ravel()
 plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
 # %%
-# plot_pdf(x, y, z, p0, proppdf, post_file)
-
-# %%
-
-
+plot_pdf(x, y, z, p0, proppdf, post_file)
 
