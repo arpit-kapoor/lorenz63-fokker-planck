@@ -6,7 +6,7 @@
 #PBS -M arpit.kapoor@unsw.edu.au 
 #PBS -m ae
 #PBS -j oe
-#PBS -o /home/z5370003/projects/lorenz63-fokker-planck/mcsim/runs/run.log
+#PBS -o /home/z5370003/projects/lorenz63-fokker-planck/mcsim/runs/run1M.log
 
 cd $PBS_O_WORKDIR
 
