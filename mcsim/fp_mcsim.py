@@ -1,5 +1,6 @@
 import os
 import time
+from joblib import Parallel, delayed
 import jax
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,26 +21,30 @@ R = 28
 B = 8/3
 
 ## Simulation parameters
-h = 1e-3                            # time step for euler discretisation 
-c = 1/10                            # parameter in obs operator  
-M = 40;							    # gap between observations (in multiples of h)
-Tf = 20;							# final time
-NT = int(Tf/h);  #1+floor(Tf/h);	# no. of discrete time steps
-sx = 0.05;							# scale of signal noise
-sy = 1;                             # std of observation noise
-s2o = 1;							# initial variance
-#NR = 1;                             # no. of repetitions of the simulation
-#sw = [1 1];                        # algorithms to run: sw(1) is BF, sw(2) is CKF
-npts = 40;                          # no. of points in each dimension in grid
-NP = 100000;                          # no. of particles, needs to be increased to 10^6 
+h = 1e-3                                    # time step for euler discretisation 
+c = 1/10                                    # parameter in obs operator  
+M = 400                                      # gap between observations (in multiples of h)
+Tf = 20                                     # final time
+NT = int(Tf/h);  #1+floor(Tf/h)             # no. of discrete time steps
+sx = 0.05                                   # scale of signal noise
+sy = 0.5                                    # std of observation noise
+s2o = 1                                     # initial variance
+#NR = 1;                                    # no. of repetitions of the simulation
+#sw = [1 1];                                # algorithms to run: sw(1) is BF, sw(2) is CKF
+npts = 40                                   # no. of points in each dimension in grid
+NP = 1000                                # no. of particles, needs to be increased to 10^6 
 
-batchsize = 20000
-d = 3;                              # dimension of state vector 
-p = 2;                              # dimension of observation vector 
-comppost = 1;                       #= 1 means to compute posterior, = 0 means only compute fokker planck
-XR0 = jnp.array([[-5.91652], [-5.52332], [24.5723]])               # reference initial condition (also prior mean)
+batchsize = 200
+d = 3;                                      # dimension of state vector 
+p = 2;                                      # dimension of observation vector 
+comppost = 1                                #= 1 means to compute posterior, = 0 means only compute fokker planck
+XR0 = jnp.array([[-5.91652], 
+                 [-5.52332], 
+                 [24.5723]])               # reference initial condition (also prior mean)
 
-XR02 = jnp.array([[5.91652], [5.52332], [24.5723]])               # other mode of initial distribution 
+XR02 = jnp.array([[5.91652], 
+                  [5.52332], 
+                  [24.5723]])               # other mode of initial distribution 
 
 ZR0 = jnp.zeros((p, 1))
 
@@ -79,7 +84,7 @@ A3 = jnp.zeros((3, 3)).at[0, 1].set(1)
 a1 = jnp.zeros((3, 1)).at[1, 0].set(1)
 a2 = jnp.zeros((3, 1)).at[2, 0].set(1)
 
-key = random.PRNGKey(int(time.time()))  # Random seed is explicit in JAX
+key = random.PRNGKey(1234)  # Random seed is explicit in JAX
 
 # --------------------------------------------------------
 
@@ -100,16 +105,10 @@ def hobs_l63(X, c):
 
 @jax.jit
 def time_update(carry, t):
-    
-    key = random.PRNGKey(int(time.time()))
     carry['ZT'] = carry['ZT'] + h*hobs_l63(carry['XT'], c) +\
-                                np.sqrt(h)*random.normal(key=key,
-                                                        shape=(p,1))
-    
-    key = random.PRNGKey(int(time.time()))
+                                sy*np.sqrt(h)*np.random.randn(p,1)
     carry['XT'] = carry['XT'] + h*nu(carry['XT']) +\
-                                sx*np.sqrt(h)*random.normal(key=key, 
-                                                            shape=(d, 1))
+                                sx*np.sqrt(h)*np.random.randn(d, 1)
 
     return carry, carry
 
@@ -117,7 +116,7 @@ def time_update(carry, t):
 @jax.jit
 def evolve_particles(i, X):
     NP_batch = X.shape[-1]
-    X = X + h*nu(X) + sx*np.sqrt(h)*random.normal(key=key, shape=(d, NP_batch))
+    X = X + h*nu(X) + sx*np.sqrt(h)*np.random.randn(d, NP_batch)
     return X
 
 @jax.jit
@@ -173,6 +172,10 @@ def plot_pdf(x, y, z, p0, pn, name='plot.gif'):
 
 
 def plot_landscape(x, y, z, p0, pn, xarr, name='plot.gif'):
+
+    def format_str(x):
+        lis = x.tolist()
+        return f"{lis[0]:.2f}, {lis[1]:.2f}, {lis[2]:.2f}"
     
     fig, ax = plt.subplots(subplot_kw=dict(projection='3d'), 
                            constrained_layout=True)
@@ -182,6 +185,7 @@ def plot_landscape(x, y, z, p0, pn, xarr, name='plot.gif'):
                                color=cmap(norm(p0)), 
                                alpha=0.5)
     scatx = ax.scatter(xarr[0, 0], xarr[1, 0], xarr[2, 0], color='red')
+    ax.set_title(format_str(xarr[:, 0]))
 
     # ax.set_zlim([0,np.max(Pt)/3])
     ax.autoscale(False)
@@ -193,9 +197,11 @@ def plot_landscape(x, y, z, p0, pn, xarr, name='plot.gif'):
         scat.set_color(cmap(norm(pn[i].ravel())))
         scat.set_sizes(scale(pn[i].flatten())*1000)
         scatx._offsets3d = (xarr[0, i+1][None], xarr[1, i+1][None], xarr[2, i+1][None])
+        scatx.set_sizes([20])
+        ax.set_title(format_str(xarr[:, i+1]))
         return [scat]
 
-    anim = FuncAnimation(fig, update, frames=tqdm(range(len(pn))), interval=1)
+    anim = FuncAnimation(fig, update, frames=tqdm(range(len(pn))), interval=0)
     ax.set(xlabel='x1', ylabel='x2', zlabel='x3')
 
     # # saving to m4 using ffmpeg writer
@@ -232,41 +238,40 @@ mesh = jnp.stack(jnp.meshgrid(*points), axis=-1)
 
 log_message("Generate prior pdf ..")
 
-# Initial pdf
+#Initial pdf
 cov = jnp.identity(d) * s2o
 XP1 = random.multivariate_normal(mean=XR0.flatten(), 
-                           cov=cov, 
-                           shape=(int(NP/2),), 
-                           key=key).T
+                                cov=cov, 
+                                shape=(int(NP/2),), 
+                                key=key).T
 XP2 = random.multivariate_normal(mean=XR02.flatten(), 
-                           cov=cov, 
-                           shape=(int(NP/2),), 
-                           key=key).T
+                                cov=cov, 
+                                shape=(int(NP/2),), 
+                                key=key).T
 
 XP = jnp.concatenate([XP1, XP2], axis=1)
 
-# Compute prior densities
-# for i in range(0, NP, batchsize):
-#     XP_batch = XP[:, i: i+batchsize]
-#     if i == 0:
-#         priorpdf0 = jnp.apply_along_axis(computepdf, 
-#                                         axis=0, arr=
-#                                         XP_batch).sum(axis=-1)
-#     else:
-#         priorpdf0 = priorpdf0 + jnp.apply_along_axis(computepdf, 
-#                                                     axis=0, 
-#                                                     arr=XP_batch).sum(axis=-1)
-#     log_message(f"{i+1} step: pdf computed")
-#     # Define timesteps and carry vectors
-#     idx = jnp.arange(len(idy)-1)
-#     carry_in = {
-#         'XT': XP_batch
-#     }
-#     if i== 0:
-#         carry_out, priorpdfn = jax.lax.scan(fokker_planck, carry_in, idx)
-#     else:
-#         carry_out, out = jax.lax.scan(fokker_planck, carry_in, idx)
-#         priorpdfn = priorpdfn + out
+def parallelfunc(XP_batch):
+    priorpdf0 = jnp.apply_along_axis(computepdf, 
+                        axis=0, 
+                        arr=XP_batch).sum(axis=-1)
+    idx = jnp.arange(len(idy)-1)
+    carry_in = {
+        'XT': XP_batch
+    }
+    carry, priorpdfn = jax.lax.scan(fokker_planck, carry_in, idx)
+    return jnp.concatenate([jnp.expand_dims(priorpdf0, axis=0), priorpdfn], axis=0)
+
+
+
+t1 = time.time()
+results = Parallel(n_jobs=12)(
+                delayed(parallelfunc)(XP[:, i: i+batchsize]) for i in range(0, NP, batchsize))
+priorpdfn = sum(results)
+priorpdf0 = priorpdfn[0]
+priorpdfn = priorpdfn[1:]
+t2 = time.time()
+log_message(f"Time taken for prior density: {t2 - t1:.2}s")
 
 
 
@@ -281,7 +286,7 @@ if comppost:
 
     correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
     correc = correc.reshape((-1, npts, npts, npts))
-    # proppdf = priorpdfn * correc
+    proppdf = priorpdfn * correc
 
 log_message("Done!")
 
@@ -294,16 +299,18 @@ y = ymesh.ravel()
 z = zmesh.ravel()
 
 
-log_message("Plotting..")
+log_message("Plotting landscape")
 correc0 = correc[0].ravel()
 landscape_file = os.path.join(rundir,'landscape.gif')
 plot_landscape(x, y, z, correc0, correc, XR[:, idy], landscape_file)
 
-# # Plot prior pdf and save to file
-# p0 = priorpdf0.ravel()
-# plot_pdf(x, y, z, p0, priorpdfn, prior_file)
+# Plot prior pdf and save to file
+log_message("Plotting prior density map")
+p0 = priorpdf0.ravel()
+plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
-# # Plot posterior pdf and save to file
-# if comppost:
-#     plot_pdf(x, y, z, p0, proppdf, post_file)
+# Plot posterior pdf and save to file
+if comppost:
+    log_message("Plotting posterior density map")
+    plot_pdf(x, y, z, p0, proppdf, post_file)
 
