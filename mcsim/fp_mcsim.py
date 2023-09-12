@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 from joblib import Parallel, delayed
@@ -12,6 +13,21 @@ from matplotlib.animation import FuncAnimation
 from jax import random
 from tqdm import tqdm
 
+
+
+# --------------------------------------------------------
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('--M', type=int, default=40, help='gap between observations')
+parser.add_argument('--NP', type=int, default=100000, help='no of particles')
+parser.add_argument('--batchsize', type=int, default=20000, help='no of particles in a batch')
+parser.add_argument('--lhood-axis', type=int, default=2, help='likelihood reduction 0 - z1, 1 - z2, 2 - mean')
+parser.add_argument('--sy', type=float, default=0.5)
+
+args = parser.parse_args()
+
+
 # --------------------------------------------------------
 cmap = plt.cm.viridis
 
@@ -23,7 +39,7 @@ B = 8/3
 ## Simulation parameters
 h = 1e-3                                    # time step for euler discretisation 
 c = 1/10                                    # parameter in obs operator  
-M = 400                                      # gap between observations (in multiples of h)
+M = args.M                                      # gap between observations (in multiples of h)
 Tf = 20                                     # final time
 NT = int(Tf/h);  #1+floor(Tf/h)             # no. of discrete time steps
 sx = 0.05                                   # scale of signal noise
@@ -32,9 +48,9 @@ s2o = 1                                     # initial variance
 #NR = 1;                                    # no. of repetitions of the simulation
 #sw = [1 1];                                # algorithms to run: sw(1) is BF, sw(2) is CKF
 npts = 40                                   # no. of points in each dimension in grid
-NP = 1000                                # no. of particles, needs to be increased to 10^6 
+NP = args.NP                                # no. of particles, needs to be increased to 10^6 
 
-batchsize = 200
+batchsize = args.batchsize
 d = 3;                                      # dimension of state vector 
 p = 2;                                      # dimension of observation vector 
 comppost = 1                                #= 1 means to compute posterior, = 0 means only compute fokker planck
@@ -57,6 +73,7 @@ def log_message(msg):
 rundir = f'runs/run_{NP}_{dt.now().strftime("%Y-%m-%dT%H:%M:%S")}'
 prior_file = os.path.join(rundir,'prior.gif')
 post_file = os.path.join(rundir,'post.gif')
+args_file = os.path.join(rundir, 'args.txt')
 
 log_message(f"Setting run directory to: {rundir}")
 
@@ -66,6 +83,9 @@ else:
     log_message("Run directory not found, creating the directory now..")
     os.makedirs(rundir)
     log_message("Run directory created!")
+
+with open(args_file, 'w') as fil:
+    fil.write(str(args))
 
 
 # Grid extents
@@ -264,14 +284,14 @@ def parallelfunc(XP_batch):
 
 
 
-t1 = time.time()
-results = Parallel(n_jobs=12)(
-                delayed(parallelfunc)(XP[:, i: i+batchsize]) for i in range(0, NP, batchsize))
-priorpdfn = sum(results)
-priorpdf0 = priorpdfn[0]
-priorpdfn = priorpdfn[1:]
-t2 = time.time()
-log_message(f"Time taken for prior density: {t2 - t1:.2}s")
+# t1 = time.time()
+# results = Parallel(n_jobs=8, backend='loky')(
+#                 delayed(parallelfunc)(XP[:, i: i+batchsize]) for i in range(0, NP, batchsize))
+# priorpdfn = sum(results)
+# priorpdf0 = priorpdfn[0]
+# priorpdfn = priorpdfn[1:]
+# t2 = time.time()
+# log_message(f"Time taken for prior density: {t2 - t1:.2}s")
 
 
 
@@ -284,9 +304,12 @@ if comppost:
     hdpts = hobs_l63(dpoints, c)  #convert to observation space 
     y = jnp.expand_dims(jnp.diff(ZL, axis=1).T/(M*h), axis=-1)
 
-    correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
+    if args.lhood_axis == 2:
+        correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts).sum(axis=1))
+    else:
+        correc = jnp.exp(-0.5*(M*h)*jnp.square(jnp.repeat(y, hdpts.shape[-1], axis=-1) - hdpts)[:, args.lhood_axis])
     correc = correc.reshape((-1, npts, npts, npts))
-    proppdf = priorpdfn * correc
+    # proppdf = priorpdfn * correc
 
 log_message("Done!")
 
@@ -304,13 +327,17 @@ correc0 = correc[0].ravel()
 landscape_file = os.path.join(rundir,'landscape.gif')
 plot_landscape(x, y, z, correc0, correc, XR[:, idy], landscape_file)
 
-# Plot prior pdf and save to file
-log_message("Plotting prior density map")
-p0 = priorpdf0.ravel()
-plot_pdf(x, y, z, p0, priorpdfn, prior_file)
+# # Plot prior pdf and save to file
+# log_message("Plotting prior density map")
+# p0 = priorpdf0.ravel()
+# plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
-# Plot posterior pdf and save to file
-if comppost:
-    log_message("Plotting posterior density map")
-    plot_pdf(x, y, z, p0, proppdf, post_file)
+# # Plot posterior pdf and save to file
+# if comppost:
+#     log_message("Plotting posterior density map")
+#     plot_pdf(x, y, z, p0, proppdf, post_file)
+
+
+
+log_message(f"Job completed!")
 
