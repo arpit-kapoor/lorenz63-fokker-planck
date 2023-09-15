@@ -405,11 +405,6 @@ x = xmesh.ravel()
 y = ymesh.ravel()
 z = zmesh.ravel()
 
-
-log_message("Plotting likelighood landscape")
-correc0 = correc[0].ravel()
-plot_landscape(x, y, z, correc0, correc, XR[:, idy], lhood_file)
-
 # Plot prior pdf and save to file
 log_message("Plotting prior density map")
 p0 = priorpdf0.ravel()
@@ -417,6 +412,11 @@ plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
 # Plot posterior pdf and save to file
 if comppost:
+
+    log_message("Plotting likelighood landscape")
+    correc0 = correc[0].ravel()
+    plot_landscape(x, y, z, correc0, correc, XR[:, idy], lhood_file)
+    
     log_message("Plotting posterior density map")
     plot_pdf(x, y, z, p0, proppdfn, post_file)
 
