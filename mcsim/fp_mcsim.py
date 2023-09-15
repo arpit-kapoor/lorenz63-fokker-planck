@@ -193,6 +193,11 @@ def plot_pdf(x, y, z, p0, pn, name='plot.gif'):
 
 def plot_landscape(x, y, z, p0, pn, xarr, name='plot.gif'):
 
+    # Reduce the number of frames to 499
+    skip = pn.shape[0]//499
+    pn = pn[::skip]
+
+
     def format_str(x):
         lis = x.tolist()
         return f"{lis[0]:.2f}, {lis[1]:.2f}, {lis[2]:.2f}"
