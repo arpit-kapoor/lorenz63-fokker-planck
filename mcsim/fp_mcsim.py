@@ -21,9 +21,12 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--M', type=int, default=40, help='gap between observations')
 parser.add_argument('--NP', type=int, default=100000, help='no of particles')
+parser.add_argument('--njobs', type=int, default=4)
 parser.add_argument('--batchsize', type=int, default=20000, help='no of particles in a batch')
 parser.add_argument('--lhood-axis', type=int, default=2, help='likelihood reduction 0 - z1, 1 - z2, 2 - mean')
 parser.add_argument('--sy', type=float, default=0.5)
+parser.add_argument('--savecode', type=int, default=2, help="Save code: (0) array, (1) animation (2) both")
+parser.add_argument('--comppost', type=int, default=1, help="Compute posterior: (0) False, (1) True")
 
 args = parser.parse_args()
 
@@ -56,7 +59,7 @@ NP = args.NP                                # no. of particles, needs to be incr
 batchsize = args.batchsize
 d = 3;                                      # dimension of state vector 
 p = 2;                                      # dimension of observation vector 
-comppost = 0                                #= 1 means to compute posterior, = 0 means only compute fokker planck
+comppost = args.comppost                                #= 1 means to compute posterior, = 0 means only compute fokker planck
 XR0 = jnp.array([[-5.91652], 
                  [-5.52332], 
                  [24.5723]])               # reference initial condition (also prior mean)
@@ -71,7 +74,7 @@ ZR0 = jnp.zeros((p, 1))                     # Initial obervation
 # Grid extents
 extents = jnp.array([[-20, 20],
                      [-30, 20],
-                     [0, 50]])
+                     [0, 60]])
 
 idy = jnp.arange(0, NT, M)                  # Discrete time-steps where 
                                             # the observations are available
@@ -89,10 +92,18 @@ def log_message(msg):
 
 # Output Dir
 rundir = f'runs/run_{NP}_{dt.now().strftime("%Y-%m-%dT%H:%M:%S")}'
-lhood_file = os.path.join(rundir,'lhood.gif')
-prior_file = os.path.join(rundir,'prior.gif')
-post_file = os.path.join(rundir,'post.gif')
+## File to store runtime arguments
 args_file = os.path.join(rundir, 'args.txt')
+## File to store 
+mesh_arr_file = os.path.join(rundir, 'mesh.npy')
+## Files for pde evolution animations
+prior_file = os.path.join(rundir,'prior.gif')
+lhood_file = os.path.join(rundir,'lhood.gif')
+post_file = os.path.join(rundir,'post.gif')
+## Files for pde evolution arrays
+prior_arr_file = os.path.join(rundir,'prior.npy')
+lhood_arr_file = os.path.join(rundir,'lhood.npy')
+post_arr_file = os.path.join(rundir,'post.npy')
 
 log_message(f"Setting run directory to: {rundir}")
 
@@ -297,12 +308,12 @@ log_message("Done!")
 points = [jnp.linspace(*extents[i], npts) for i in range(d)]
 mesh = jnp.stack(jnp.meshgrid(*points), axis=-1)
 
-log_message("Generate prior pdf ..")
-
 
 # --------------------------------------------------------
 # COMPUTE PRIOR DENSITIES
 # --------------------------------------------------------
+
+log_message("Generate prior pdf ..")
 
 # Initialize particles by sampling from the initial distributions
 # Half of the particles are sampled from Multivariate Gaussian with mean XR0
@@ -357,12 +368,13 @@ def parallelfunc(XP_batch):
 t1 = time.time()
 
 # Spawn njobs to run the prior density calculation in parallel
-results = Parallel(n_jobs=8)(
+results = Parallel(n_jobs=args.njobs)(
                 delayed(parallelfunc)(XP[:, i: i+batchsize]) for i in range(0, NP, batchsize))
 # Add the results to get final pdf over the mesh-grid
 priorpdfn = sum(results)
 priorpdf0 = priorpdfn[0]
 priorpdfn = priorpdfn[1:]
+del(results)
 t2 = time.time()
 log_message(f"Time taken for prior density: {t2 - t1:.2}s")
 
@@ -393,30 +405,55 @@ log_message("Done!")
 
 
 # --------------------------------------------------------
+# SAVE ARRAY: Write arrays to file
+# --------------------------------------------------------
+
+if args.savecode in [0, 2]:
+
+    # Meshgrid
+    with open(mesh_arr_file, 'wb') as f:
+        jnp.save(f, mesh)
+
+    # Prior PDF
+    with open(prior_arr_file, 'wb') as f:
+        jnp.save(f, priorpdfn)
+
+    # Likelihood PDF
+    with open(lhood_arr_file, 'wb') as f:
+        jnp.save(f, correc)
+
+    # Posterior PDF
+    with open(post_arr_file, 'wb') as f:
+        jnp.save(f, proppdfn)
+
+
+
+# --------------------------------------------------------
 # GENERATE PLOTS
 # --------------------------------------------------------
 
+if args.savecode in [1, 2]:
 
-xmesh = mesh[:, :, :, 0]
-ymesh = mesh[:, :, :, 1]
-zmesh = mesh[:, :, :, 2]
+    xmesh = mesh[:, :, :, 0]
+    ymesh = mesh[:, :, :, 1]
+    zmesh = mesh[:, :, :, 2]
 
-x = xmesh.ravel()
-y = ymesh.ravel()
-z = zmesh.ravel()
+    x = xmesh.ravel()
+    y = ymesh.ravel()
+    z = zmesh.ravel()
 
-# Plot prior pdf and save to file
-log_message("Plotting prior density map")
-p0 = priorpdf0.ravel()
-plot_pdf(x, y, z, p0, priorpdfn, prior_file)
+    # Plot prior pdf and save to file
+    log_message("Plotting prior density map")
+    p0 = priorpdf0.ravel()
+    plot_pdf(x, y, z, p0, priorpdfn, prior_file)
 
-# Plot posterior pdf and save to file
-if comppost:
+    # Plot posterior pdf and save to file
+    if comppost:
 
-    log_message("Plotting likelighood landscape")
-    correc0 = correc[0].ravel()
-    plot_landscape(x, y, z, correc0, correc, XR[:, idy], lhood_file)
-    
-    log_message("Plotting posterior density map")
-    plot_pdf(x, y, z, p0, proppdfn, post_file)
+        log_message("Plotting likelighood landscape")
+        correc0 = correc[0].ravel()
+        plot_landscape(x, y, z, correc0, correc, XR[:, idy], lhood_file)
+        
+        log_message("Plotting posterior density map")
+        plot_pdf(x, y, z, p0, proppdfn, post_file)
 
