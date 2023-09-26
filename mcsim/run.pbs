@@ -13,8 +13,8 @@ cd $PBS_O_WORKDIR
 module load ffmpeg
 for M in 40
 do
-    for SY in 0.1
+    for SY in 0.2
     do 
-        ~/miniconda3/envs/fplanck/bin/python fp_mcsim.py --M $M --sy $SY --savecode 2  --comppost 0 --njobs 4
+        ~/miniconda3/envs/fplanck/bin/python fp_mcsim.py --M $M --sy $SY --savecode 2  --comppost 1 --njobs 4
     done
 done

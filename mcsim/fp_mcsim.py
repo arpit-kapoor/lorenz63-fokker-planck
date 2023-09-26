@@ -418,13 +418,15 @@ if args.savecode in [0, 2]:
     with open(prior_arr_file, 'wb') as f:
         jnp.save(f, priorpdfn)
 
-    # Likelihood PDF
-    with open(lhood_arr_file, 'wb') as f:
-        jnp.save(f, correc)
+    if comppost:
 
-    # Posterior PDF
-    with open(post_arr_file, 'wb') as f:
-        jnp.save(f, proppdfn)
+        # Likelihood PDF
+        with open(lhood_arr_file, 'wb') as f:
+            jnp.save(f, correc)
+
+        # Posterior PDF
+        with open(post_arr_file, 'wb') as f:
+            jnp.save(f, proppdfn)
 
 
 
